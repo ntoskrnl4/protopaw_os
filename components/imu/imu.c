@@ -13,8 +13,10 @@ int accel_scale = 8;
 int gyro_scale = 2000;
 float imu_temp = 0.0f;
 float imu_accel[3] = {0.0f, 0.0f, 0.0f};
-float imu_gyro[3] = {0.0f, 0.0f, 0.0f};
+float imu_gyro[3] = {0.0f, 0.0f, 0.0f};  // we start off in outer space
 
+
+#if CONFIG_IMU_ENABLED
 
 void imu_write_reg(uint8_t reg, uint8_t val) {
 	assert(reg <= 0x7f);
@@ -55,10 +57,56 @@ int16_t imu_read_reg2(uint8_t reg) {
 	return ((int16_t*)(txn.rx_data))[0];
 }
 
+void imu_reconfigure(imu_accel_range_t accel_range, imu_odr_t accel_odr,
+					 imu_gyro_range_t gyro_range, imu_odr_t gyro_odr) {
+
+	imu_write_reg(0x15, imu_read_reg(0x15) & 0b11101111);	// Clear bit 4 (Enable Accel high-perf mode)
+	imu_write_reg(0x16, imu_read_reg(0x16) & 0b01111111);	// Clear bit 7 (Enable Gyro high-perf mode)
+
+	uint8_t CTRL1_XL = (accel_odr << 4) | (accel_range << 2);
+	imu_write_reg(0x10, CTRL1_XL);
+
+	uint8_t CTRL2_G = (gyro_odr << 4) | (gyro_range << 1);
+	imu_write_reg(0x11, CTRL2_G);
+
+	// set the global scale values
+	switch (accel_range) {
+		case IMU_ACCEL_RANGE_2G:
+			accel_scale = 2;
+			break;
+		case IMU_ACCEL_RANGE_4G:
+			accel_scale = 4;
+			break;
+		case IMU_ACCEL_RANGE_8G:
+			accel_scale = 8;
+			break;
+		case IMU_ACCEL_RANGE_16G:
+			accel_scale = 16;
+			break;
+	}
+	switch (gyro_range) {
+		case IMU_GYRO_RANGE_125DPS:
+			gyro_scale = 125;
+			break;
+		case IMU_GYRO_RANGE_250DPS:
+			gyro_scale = 250;
+			break;
+		case IMU_GYRO_RANGE_500DPS:
+			gyro_scale = 500;
+			break;
+		case IMU_GYRO_RANGE_1000DPS:
+			gyro_scale = 1000;
+			break;
+		case IMU_GYRO_RANGE_2000DPS:
+			gyro_scale = 2000;
+			break;
+	}
+}
+
 void imu_update() {
-	int16_t raw;
-	float gyro_scale_factor = (float)gyro_scale*0.000035f;  // 2000dps = 70mdps/LSB
-	float accel_scale_factor = (float)accel_scale/32768.0f;  // 16g = 0.488mg/LSB
+	int16_t raw;  // we're gonna put it in raw
+	float gyro_scale_factor = (float)gyro_scale*0.000035f;  // 2000dps = 70mdps/LSB, same scale w/ others
+	float accel_scale_factor = (float)accel_scale/32768.0f;  // 16g = 0.488mg/LSB, aka div by value's width
 	// (these values are fine as float because they're binary-round-ish, eg. 16/32768)
 
 	raw = imu_read_reg2(0x20);
@@ -113,13 +161,15 @@ esp_err_t nt_imu_init() {
 	);
 
 	if (imu_read_reg(0x0f) != 0x6c)  // LSM6DSO: DS page 48: register 0x0f always contains 0x6c
-		return ESP_ERR_NOT_FOUND;
+		return ESP_ERR_NOT_SUPPORTED;
 
 	// Datasheet: https://www.st.com/resource/en/datasheet/lsm6dso.pdf
-	imu_write_reg(0x10, 0b10101100);  // [7:4] Accel Data Rate: 6.6kHz (max), [3:2] Accel Scale: 8g
-	imu_write_reg(0x11, 0b10101100);  // [7:4] Gyro Data Rate: 6.66kHz (max), [3:2] Gyro Scale: 2000deg/s
-	imu_write_reg(0x16, 0b01010000);  // [7] Gyro low-power mode, [6] Gyro HPF en, [5:4] Gyro HPF freq (65mHz)
-
+	imu_reconfigure(
+			IMU_ACCEL_RANGE_8G, IMU_ODR_6660HZ,  // we lose nothing (except like, 50µA) by measuring at max speed
+			IMU_GYRO_RANGE_2000DPS, IMU_ODR_6660HZ
+	);
+	imu_write_reg(0x16, 0b01000000);  // [7] Gyro low-power mode, [6] Gyro HPF en, [5:4] Gyro HPF freq (65mHz)
+	imu_write_reg(0x5e, 0b00000100);  // enable orientation detection
 
 	return ESP_OK;
 }
