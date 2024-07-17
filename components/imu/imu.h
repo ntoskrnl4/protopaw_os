@@ -1,3 +1,4 @@
+#include <sys/cdefs.h>
 //
 // Created by ntoskrnl on 2024-07-12.
 //
@@ -70,6 +71,6 @@ extern float imu_gyro[3];  // [deg/s] x, y, z
 extern gravity_vec_t orientation;
 
 
-void nt_imu_update();
+_Noreturn void nt_imu_update();
 esp_err_t nt_imu_init();
 esp_err_t nt_imu_start_task();

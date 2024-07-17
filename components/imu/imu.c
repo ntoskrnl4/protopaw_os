@@ -6,6 +6,7 @@
 #include <driver/spi_master.h>
 #include <esp_log.h>
 #include <esp_check.h>
+#include <math.h>
 #include "imu.h"
 
 spi_device_handle_t imu;
@@ -14,7 +15,11 @@ int gyro_scale = 2000;
 float imu_temp = 0.0f;
 float imu_accel[3] = {0.0f, 0.0f, 0.0f};
 float imu_gyro[3] = {0.0f, 0.0f, 0.0f};  // we start off in outer space
+gravity_vec_t orientation = {.az = 0.0f, .el = 0.0f};
+TaskHandle_t imu_updater_task;
 
+#define ACCEL_SMOOTHING_FACTOR 0.95
+#define IMU_UPDATE(x, v) (v*(1-ACCEL_SMOOTHING_FACTOR) + (x*ACCEL_SMOOTHING_FACTOR))
 
 #if CONFIG_IMU_ENABLED
 
@@ -110,7 +115,7 @@ void imu_update() {
 	// (these values are fine as float because they're binary-round-ish, eg. 16/32768)
 
 	raw = imu_read_reg2(0x20);
-	imu_temp = ((float)raw/256.0f) + 25.0f;  // Lower byte is fractions of a degree, upper register centered on +25'C
+	imu_temp = IMU_UPDATE(imu_temp, ((float)raw/256.0f) + 25.0f);  // Lower byte is fractions of a degree, upper register centered on +25'C
 
 	raw = imu_read_reg2(0x22);
 	imu_gyro[0] = (float)raw*gyro_scale_factor;
@@ -120,14 +125,32 @@ void imu_update() {
 	imu_gyro[2] = (float)raw*gyro_scale_factor;
 
 	raw = imu_read_reg2(0x28);
-	imu_accel[0] = (float)raw*accel_scale_factor;
+	imu_accel[0] = IMU_UPDATE(imu_accel[0], (float)raw*accel_scale_factor);
 	raw = imu_read_reg2(0x2a);
-	imu_accel[1] = (float)raw*accel_scale_factor;
+	imu_accel[1] = IMU_UPDATE(imu_accel[1], (float)raw*accel_scale_factor);
 	raw = imu_read_reg2(0x2c);
-	imu_accel[2] = (float)raw*accel_scale_factor;
+	imu_accel[2] = IMU_UPDATE(imu_accel[2], (float)raw*accel_scale_factor);
+
+//	uint32_t start = esp_cpu_get_cycle_count();
+	float xy_plane_proj_length = sqrtf((imu_accel[0]*imu_accel[0]) + (imu_accel[1]*imu_accel[1]));
+
+	orientation = (gravity_vec_t){
+			.az = atan2f(imu_accel[1], imu_accel[0]) * (float)(180.0/M_PI),
+			.el = atanf(imu_accel[2] / xy_plane_proj_length) * (float)(180/M_PI),
+	};
+//	uint32_t end = esp_cpu_get_cycle_count();
+//	printf("imu: Orientation calculation took %lu cycles\n", end-start);
+//	printf("imu: Azimuth orienation atan2f returned %f\n", atan2f(imu_accel[1], imu_accel[0]));
+//	printf("imu: XY plane vector length is %f\n", xy_plane_proj_length);
+//	printf("imu: Elevation orientation tanf returned %f\n", tanf(imu_accel[2] / xy_plane_proj_length));
 }
 
-void nt_imu_update() { imu_update(); }
+_Noreturn void nt_imu_update() {
+	while (1) {
+		imu_update();
+		vTaskDelay(10/portTICK_PERIOD_MS);
+	}
+}
 
 esp_err_t nt_imu_init() {
 	spi_bus_config_t bus = {
@@ -171,5 +194,16 @@ esp_err_t nt_imu_init() {
 	imu_write_reg(0x16, 0b01000000);  // [7] Gyro low-power mode, [6] Gyro HPF en, [5:4] Gyro HPF freq (65mHz)
 	imu_write_reg(0x5e, 0b00000100);  // enable orientation detection
 
+	xTaskCreate(
+			nt_imu_update,
+			"imu_updater",
+			4096,	// stack size, in bytes
+			NULL,	// function parameters
+			1, 		// process prioeity
+			&imu_updater_task
+	);
+
 	return ESP_OK;
 }
+
+#endif  // CONFIG_IMU_ENABLED
