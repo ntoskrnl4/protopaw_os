@@ -54,9 +54,11 @@ void nt_disp_redraw() {
 
 	uint8_t* fb_pointer = (uint8_t*)framebuffer;
 
+	spi_device_acquire_bus(display, portMAX_DELAY);
 	uint32_t start = esp_cpu_get_cycle_count();
-	if (sizeof(framebuffer) > 32768) {
-		int32_t remaining = sizeof(framebuffer);  // a manual sizeof(nt_framebuffer)
+
+	if (sizeof(framebuffer) > 32768) {  // If the framebuffer is too large to fit in one DMA transaction, split it up
+		int32_t remaining = sizeof(framebuffer);
 		do {
 			st7789_write(ST_DAT, fb_pointer, (remaining > 32768 ? 32768 : remaining));
 			remaining -= 32768;
@@ -65,9 +67,11 @@ void nt_disp_redraw() {
 	} else {
 		st7789_write(ST_DAT, (uint8_t *) framebuffer, sizeof(framebuffer));
 	}
+
 	uint32_t end = esp_cpu_get_cycle_count();
-//	printf("redraw: took %lu clock cycles to write framebuffer. fill is (%d,%d,%d); bg is (%d,%d,%d); fg is (%d,%d,%d)\n",
-//		   end-start, FROM565R(framebuffer[0][0]), FROM565G(framebuffer[0][0]), FROM565B(framebuffer[0][0]), bg_r, bg_g, bg_b, fg_r, fg_g, fg_b);
+	spi_device_release_bus(display);
+
+	printf("redraw: took %lu clock cycles to write framebuffer\n", end-start);
 }
 
 void nt_disp_start() {
@@ -95,10 +99,10 @@ void nt_disp_start() {
 	st7789_write_byte(0x01);	// .. to 0x0140 (320)
 	st7789_write_byte(0x40);
 
-	st7789_write_cmd(0x21);	//Display Inversion On
+	st7789_write_cmd(0x21);	// Invert display (so it's actually *normal*)
 	vTaskDelay(10/portTICK_PERIOD_MS);
 
-	st7789_write_cmd(0x13);	//Normal Display Mode On
+	st7789_write_cmd(0x13);	// Use full display with
 	vTaskDelay(10/portTICK_PERIOD_MS);
 
 	st7789_write_cmd(0x29);	//Display ON
@@ -141,7 +145,7 @@ esp_err_t nt_disp_init() {
 	spi_device_interface_config_t cfg = {
 			.clock_speed_hz = CONFIG_DISP_SPI_FREQ*1000,
 			.queue_size = 8,
-			.mode = 3,  // according to nopnop's st7789 library?
+			.mode = 3,  // mode 0 DOES NOT work
 			.flags = 0,
 			.spics_io_num = CONFIG_DISP_PIN_CS,
 	};
