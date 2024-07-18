@@ -21,3 +21,4 @@ void nt_disp_fill(uint8_t r, uint8_t g, uint8_t b);
 void nt_disp_set_fg(uint8_t r, uint8_t g, uint8_t b);
 void nt_disp_set_bg(uint8_t r, uint8_t g, uint8_t b);
 void nt_disp_write_text(const char* str, size_t len, int loc_x, int loc_y);
+void nt_disp__set_text_inversion(bool x);

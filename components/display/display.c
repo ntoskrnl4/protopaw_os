@@ -12,6 +12,7 @@
 #include "sdkconfig.h"
 #include "cascadia_12x24/font.h"
 
+
 typedef enum {
 	ST_DAT = 1,
 	ST_CMD = 0,
@@ -22,6 +23,7 @@ DRAM_ATTR disp_color_t framebuffer[CONFIG_DISP_SIZE_Y][CONFIG_DISP_SIZE_X];
 
 uint8_t fg_r = 255, fg_g = 255, fg_b = 255;
 uint8_t bg_r = 0, bg_g = 0, bg_b = 0;
+bool use_text_inversion = 0;
 
 
 void st7789_write(st_dc_t dat_cmd, const uint8_t* data, size_t len) {
@@ -32,17 +34,21 @@ void st7789_write(st_dc_t dat_cmd, const uint8_t* data, size_t len) {
 	ESP_ERROR_CHECK(spi_device_transmit(display, &txn));
 }
 
+
 void st7789_write_cmd(uint8_t cmd) {
 	st7789_write(ST_CMD, &cmd, 1);
 }
+
 
 void st7789_write_byte(uint8_t val) {
 	st7789_write(ST_DAT, &val, 1);
 }
 
+
 void nt_disp_fill(uint8_t r, uint8_t g, uint8_t b) {
 	memset(&framebuffer, COLOR(r, g, b), sizeof(framebuffer));
 }
+
 
 void nt_disp_redraw() {
 	// Redraw from framebuffer
@@ -74,7 +80,9 @@ void nt_disp_redraw() {
 	printf("redraw: took %lu clock cycles to write framebuffer\n", end-start);
 }
 
+
 void nt_disp_start() {
+	// https://www.rhydolabz.com/documents/33/ST7789.pdf
 	st7789_write_cmd(0x01);  // reset
 	vTaskDelay(100/portTICK_PERIOD_MS);
 
@@ -109,6 +117,7 @@ void nt_disp_start() {
 	vTaskDelay(255/portTICK_PERIOD_MS);
 
 }
+
 
 esp_err_t nt_disp_init() {
 	gpio_reset_pin(CONFIG_DISP_PIN_RST);
@@ -161,6 +170,7 @@ esp_err_t nt_disp_init() {
 	return ESP_OK;
 }
 
+
 void fb_render_char(uint8_t chr, int loc_x, int loc_y) {
 	// This function simply places the character into the framebuffer at the specified location
 	// Location should be specified in character-grid coordinates, not pixel coords
@@ -171,10 +181,13 @@ void fb_render_char(uint8_t chr, int loc_x, int loc_y) {
 	for (int x = 0; x < font_size_x; x++) {
 		for (int y = 0; y < font_size_y; y++) {
 			uint8_t pxl = font_sheet[chr][(y * font_size_x) + x];
+			if (use_text_inversion)
+				pxl = 255-pxl;
 			framebuffer[corner_x + x][corner_y + y] = COLOR(pxl,pxl,pxl);
 		}
 	}
 }
+
 
 void nt_disp_write_text(const char* str, size_t len, int loc_x, int loc_y) {
 	for (int i = 0; i < len; ++i) {
@@ -195,3 +208,6 @@ void nt_disp_write_text(const char* str, size_t len, int loc_x, int loc_y) {
 		}
 	}
 }
+
+
+void nt_disp__set_text_inversion(bool x) { use_text_inversion = x; }
