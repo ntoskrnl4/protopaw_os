@@ -71,6 +71,6 @@ extern float imu_gyro[3];  // [deg/s] x, y, z
 extern gravity_vec_t orientation;
 
 
-_Noreturn void nt_imu_update();
+void imu_update();
 esp_err_t nt_imu_init();
 esp_err_t nt_imu_start_task();

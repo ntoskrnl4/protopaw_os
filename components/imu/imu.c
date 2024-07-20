@@ -148,13 +148,6 @@ void imu_update() {
 //	printf("imu: Elevation orientation tanf returned %f\n", tanf(imu_accel[2] / xy_plane_proj_length));
 }
 
-_Noreturn void nt_imu_update() {
-	while (1) {
-		imu_update();
-		vTaskDelay(10/portTICK_PERIOD_MS);
-	}
-}
-
 esp_err_t nt_imu_init() {
 	spi_bus_config_t bus = {
 			.mosi_io_num = CONFIG_DISP_PIN_MOSI,
