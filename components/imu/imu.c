@@ -11,7 +11,9 @@
 
 spi_device_handle_t imu;
 int accel_scale = 8;
+float accel_scale_factor;
 int gyro_scale = 2000;
+float gyro_scale_factor;
 float imu_temp = 0.0f;
 float imu_accel[3] = {0.0f, 0.0f, 0.0f};
 float imu_gyro[3] = {0.0f, 0.0f, 0.0f};  // we start off in outer space
@@ -106,13 +108,14 @@ void imu_reconfigure(imu_accel_range_t accel_range, imu_odr_t accel_odr,
 			gyro_scale = 2000;
 			break;
 	}
+
+	gyro_scale_factor = (float)gyro_scale*0.000035f;  // 2000dps = 70mdps/LSB, same scale w/ others
+	accel_scale_factor = (float)accel_scale/32768.0f;  // 16g = 0.488mg/LSB, aka div by value's width
+	// (these values are fine as float because they're binary-round-ish, eg. 16/32768)
 }
 
 void imu_update() {
 	int16_t raw;  // we're gonna put it in raw
-	float gyro_scale_factor = (float)gyro_scale*0.000035f;  // 2000dps = 70mdps/LSB, same scale w/ others
-	float accel_scale_factor = (float)accel_scale/32768.0f;  // 16g = 0.488mg/LSB, aka div by value's width
-	// (these values are fine as float because they're binary-round-ish, eg. 16/32768)
 
 	raw = imu_read_reg2(0x20);
 	imu_temp = IMU_UPDATE(imu_temp, ((float)raw/256.0f) + 25.0f);  // Lower byte is fractions of a degree, upper register centered on +25'C
