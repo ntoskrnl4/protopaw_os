@@ -1,0 +1,11 @@
+# ProtogenOS Custom Partition Table
+# Offset is the location in the flash stored
+# This part table is at 0x08000, the bootloader is the first part up to there
+# Partition table occupies 0x1000 of space
+# Name,     Type,   SubType,    Offset,     Size,       Flags
+nvs,        data,   nvs,        0x011000,   0x006000,
+phy_init,   data,   phy,        0x017000,   0x001000,
+coredump,   data,   coredump,   0x018000,   0x008000,
+code,       app,    factory,    0x020000,   0x1e0000,
+# filesystem, data,   fat,        0x200000,   0xe00000,
+# todo: change coredump size to 32k cause thats smaller.?
