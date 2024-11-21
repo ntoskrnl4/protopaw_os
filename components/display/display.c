@@ -189,7 +189,10 @@ void fb_render_char(uint8_t chr, int loc_x, int loc_y) {
 	for (int x = 0; x < font_size_x; x++) {
 		for (int y = 0; y < font_size_y; y++) {
 			uint8_t pxl = font_sheet[chr][(y * font_size_x) + x];
-			pxbuf[x + (font_size_x*y)] = (color_rgb_t){pxl, pxl, pxl};
+			uint8_t r = (uint8_t)(bg.r + ((((uint16_t)fg.r - bg.r)*pxl)/255));
+			uint8_t g = (uint8_t)(bg.g + ((((uint16_t)fg.g - bg.g)*pxl)/255));
+			uint8_t b = (uint8_t)(bg.b + ((((uint16_t)fg.b - bg.b)*pxl)/255));
+			pxbuf[x + (font_size_x*y)] = (color_rgb_t){r, g, b};
 		}
 	}
 	st7789_draw_fragment(pxbuf, corner_x, corner_y, font_size_x, font_size_y);
