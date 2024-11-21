@@ -148,6 +148,15 @@ void imu_update() {
 //	printf("imu: Elevation orientation tanf returned %f\n", tanf(imu_accel[2] / xy_plane_proj_length));
 }
 
+
+void task_imu_update() {
+	for(;;) {
+		imu_update();
+		vTaskDelay(10/portTICK_PERIOD_MS);
+	}
+}
+
+
 esp_err_t nt_imu_init() {
 	spi_bus_config_t bus = {
 			.mosi_io_num = CONFIG_DISP_PIN_MOSI,
@@ -191,7 +200,7 @@ esp_err_t nt_imu_init() {
 	imu_write_reg(0x5e, 0b00000100);  // enable orientation detection
 
 	xTaskCreate(
-			nt_imu_update,
+			&task_imu_update,
 			"imu_updater",
 			4096,	// stack size, in bytes
 			NULL,	// function parameters
