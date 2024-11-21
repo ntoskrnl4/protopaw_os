@@ -19,11 +19,10 @@ typedef enum {
 } st_dc_t;
 
 spi_device_handle_t display;
-DRAM_ATTR disp_color_t framebuffer[CONFIG_DISP_SIZE_Y][CONFIG_DISP_SIZE_X];
 
-uint8_t fg_r = 255, fg_g = 255, fg_b = 255;
-uint8_t bg_r = 0, bg_g = 0, bg_b = 0;
-bool use_text_inversion = 0;
+color_rgb_t fg = {0xff, 0xff, 0xff};
+color_rgb_t bg = {0};
+bool display_transpose_axes;
 
 
 void st7789_write(st_dc_t dat_cmd, const uint8_t* data, size_t len) {
@@ -45,111 +44,107 @@ void st7789_write_byte(uint8_t val) {
 }
 
 
-void nt_disp_fill(uint8_t r, uint8_t g, uint8_t b) {
-	memset(&framebuffer, COLOR(r, g, b), sizeof(framebuffer));
+void st7789_set_window(int x1, int y1, int x2, int y2) {
+	x2 -= 1;
+	y2 -= 1;
+
+	st7789_write_cmd(0x2A);	// set window width
+	st7789_write_byte(x1 >> 8);	// from start (upper, lower)
+	st7789_write_byte(x1 & 0xFF);
+	st7789_write_byte(x2 >> 8);	// to end (upper, lower)
+	st7789_write_byte(x2 & 0xFF);
+
+	st7789_write_cmd(0x2B);	// set window height
+	st7789_write_byte(y1 >> 8);	// from start
+	st7789_write_byte(y1 & 0xFF);
+	st7789_write_byte(y2 >> 8);	// to end
+	st7789_write_byte(y2 & 0xFF);
 }
 
 
-void nt_disp_redraw() {
-	// Redraw from framebuffer
-	st7789_write_cmd(0x2a);
-	st7789_write(ST_DAT, (uint8_t[]){0, 0}, 2);
-	st7789_write_cmd(0x2b);
-	st7789_write(ST_DAT, (uint8_t[]){0, 0}, 2);
+void st7789_set_transforms(bool flip_x, bool flip_y, bool transpose) {
+/* A Concrete Example, using Adafruit 240x320 display module
+ * 		/--- 240x320 2.0" TFT ST7789 ---\
+ * 		|								|
+ * 		|	O --> x dim					|
+ * 		|	|							|
+ * 		|	|							|
+ * 		|	y							|
+ * 		|	dim							|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|								|
+ * 		|-------------------------------|
+ * 		|.  .  .  .  .  .  .  .  .  .  .|
+ * 		\_______________________________/
+ *
+ * */
+	display_transpose_axes = transpose;  // we need this to keep track of it when drawing
+	st7789_write_cmd(0x36);  // Memory Data Access Control (Scanning order)
+	st7789_write_byte((flip_y << 7) | (flip_x << 6) | (transpose << 5));  // Controls fb rotation/mirroring
+	// See DS p.125 for detail values. [MV/MX/MY] <=> bits [5/6/7]
+}
+
+
+void st7789_draw_fragment(color_rgb_t* fragment, int x, int y, int xlen, int ylen) {
+	st7789_set_window(x, y, x+xlen, y+ylen);
+
+	// Todo: Implement handling for fragments larger than 32768 (32766) bytes (10922px area)
+	if (xlen*ylen >= 10923)
+		ESP_LOGE("st7789", "Attempt to draw a fragment with more than 10922 pixels (larger than a single transaction). "
+						   "This functionality is not implemented and you will now crash and burn. Enjoy.");
 	st7789_write_cmd(0x2c);
+	st7789_write(ST_DAT, (uint8_t*)fragment, xlen*ylen*sizeof(color_rgb_t));
+}
 
-	uint8_t* fb_pointer = (uint8_t*)framebuffer;
 
-	spi_device_acquire_bus(display, portMAX_DELAY);
-	uint32_t start = esp_cpu_get_cycle_count();
-
-	if (sizeof(framebuffer) > 32768) {  // If the framebuffer is too large to fit in one DMA transaction, split it up
-		int32_t remaining = sizeof(framebuffer);
-		do {
-			st7789_write(ST_DAT, fb_pointer, (remaining > 32768 ? 32768 : remaining));
-			remaining -= 32768;
-			fb_pointer += 32768;
-		} while (remaining > 0);
-	} else {
-		st7789_write(ST_DAT, (uint8_t *) framebuffer, sizeof(framebuffer));
+void nt_disp_fill(uint8_t r, uint8_t g, uint8_t b) {
+	color_rgb_t* fragment = heap_caps_malloc(32766, MALLOC_CAP_DMA);
+	for (int i=0; i < 32766/3; i+=1) {
+		fragment[i].r = r;
+		fragment[i].g = g;
+		fragment[i].b = b;
 	}
 
-	uint32_t end = esp_cpu_get_cycle_count();
-	spi_device_release_bus(display);
+	st7789_set_window(0,0,320,240);
 
-	printf("redraw: took %lu clock cycles to write framebuffer\n", end-start);
-}
-
-
-void nt_disp_start() {
-	// https://www.rhydolabz.com/documents/33/ST7789.pdf
-	st7789_write_cmd(0x01);  // reset
-	vTaskDelay(100/portTICK_PERIOD_MS);
-
-	st7789_write_cmd(0x11);
-	vTaskDelay(250/portTICK_PERIOD_MS);
-
-	st7789_write_cmd(0x3a);
-	st7789_write_byte(0x55);
-
-	st7789_write_cmd(0x36);	//Memory Data Access Control
-	st7789_write_byte(0b01000001);
-
-	st7789_write_cmd(0x2A);	// screen width
-	st7789_write_byte(0x00);	// from 0x0000...
-	st7789_write_byte(0x00);
-	st7789_write_byte(0x00);	// .. to 0x00F0 (240)
-	st7789_write_byte(0xF0);
-
-	st7789_write_cmd(0x2B);	// screen height
-	st7789_write_byte(0x00);	// from 0x0000...
-	st7789_write_byte(0x00);
-	st7789_write_byte(0x01);	// .. to 0x0140 (320)
-	st7789_write_byte(0x40);
-
-	st7789_write_cmd(0x21);	// Invert display (so it's actually *normal*)
-	vTaskDelay(10/portTICK_PERIOD_MS);
-
-	st7789_write_cmd(0x13);	// Use full display with
-	vTaskDelay(10/portTICK_PERIOD_MS);
-
-	st7789_write_cmd(0x29);	//Display ON
-	vTaskDelay(255/portTICK_PERIOD_MS);
-
+	st7789_write_cmd(0x2c);  // bulk pixel write
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	st7789_write(ST_DAT, (uint8_t*)fragment, 32766);
+	heap_caps_free(fragment);
 }
 
 
 esp_err_t nt_disp_init() {
-	gpio_reset_pin(CONFIG_DISP_PIN_RST);
-	gpio_set_direction(CONFIG_DISP_PIN_RST, GPIO_MODE_OUTPUT);
-	gpio_set_level(CONFIG_DISP_PIN_RST, 1);
-
-	gpio_reset_pin(CONFIG_DISP_PIN_DC);
-	gpio_set_direction(CONFIG_DISP_PIN_DC, GPIO_MODE_OUTPUT);
-	gpio_set_level(CONFIG_DISP_PIN_DC, 0);
-
 	gpio_set_level(CONFIG_DISP_PIN_RST, 0);  // start reset. We'll get back to this later
 
-#if CONFIG_DISP_PIN_BKLT != -1
-	gpio_reset_pin(CONFIG_DISP_PIN_BKLT);
-	gpio_set_direction(CONFIG_DISP_PIN_BKLT, GPIO_MODE_OUTPUT);
-	gpio_set_level(CONFIG_DISP_PIN_BKLT, 0);
-#endif
-
-	spi_bus_config_t bus = {
-			.mosi_io_num = CONFIG_DISP_PIN_MOSI,
-			.miso_io_num = CONFIG_DISP_PIN_MISO,
-			.sclk_io_num = CONFIG_DISP_PIN_SCK,
-			.quadwp_io_num = -1,
-			.quadhd_io_num = -1,
-			.max_transfer_sz = 32768,
-			.flags = 0
-	};
-
-	ESP_RETURN_ON_ERROR(
-			spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO),
-			"display", "spi bus failed init"
-	);
+	// Todo: Handle this properly instead
+//	spi_bus_config_t bus = {
+//			.mosi_io_num = CONFIG_DISP_PIN_MOSI,
+//			.miso_io_num = CONFIG_DISP_PIN_MISO,
+//			.sclk_io_num = CONFIG_DISP_PIN_SCK,
+//			.quadwp_io_num = -1,
+//			.quadhd_io_num = -1,
+//			.max_transfer_sz = 32768,
+//			.flags = 0
+//	};
+//
+//	ESP_RETURN_ON_ERROR(
+//			spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO),
+//			"display", "spi bus failed init"
+//	);
 
 	spi_device_interface_config_t cfg = {
 			.clock_speed_hz = CONFIG_DISP_SPI_FREQ*1000,
@@ -163,9 +158,21 @@ esp_err_t nt_disp_init() {
 			"display", "spi device failed init"
 	);
 
-	memset(&framebuffer, COLOR(bg_r, bg_g, bg_b), sizeof(framebuffer));
-
 	gpio_set_level(CONFIG_DISP_PIN_RST, 1);
+
+	st7789_write_cmd(0x11);  // Exit sleep
+	vTaskDelay(1);
+
+	// https://www.rhydolabz.com/documents/33/ST7789.pdf
+	st7789_write_cmd(0x3a);
+	st7789_write_byte(0x66);  // 0x55 for RGB565, 0x66 for full color
+
+	st7789_set_transforms(true, false, true);
+
+	st7789_write_cmd(0x21);	// Invert display (so it's actually *normal*)
+	st7789_write_cmd(0x29);	// Enable output
+
+	nt_disp_fill(0xc3, 0x65, 0x1e);
 
 	return ESP_OK;
 }
@@ -175,17 +182,17 @@ void fb_render_char(uint8_t chr, int loc_x, int loc_y) {
 	// This function simply places the character into the framebuffer at the specified location
 	// Location should be specified in character-grid coordinates, not pixel coords
 	// Also need to scale linearly from fg color to bg color: 255=>fg, 0=>bg
+	static color_rgb_t pxbuf[font_size_x*font_size_y];
 	int corner_x = loc_x * font_size_x;
 	int corner_y = loc_y * font_size_y;
 
 	for (int x = 0; x < font_size_x; x++) {
 		for (int y = 0; y < font_size_y; y++) {
 			uint8_t pxl = font_sheet[chr][(y * font_size_x) + x];
-			if (use_text_inversion)
-				pxl = 255-pxl;
-			framebuffer[corner_x + x][corner_y + y] = COLOR(pxl,pxl,pxl);
+			pxbuf[x + (font_size_x*y)] = (color_rgb_t){pxl, pxl, pxl};
 		}
 	}
+	st7789_draw_fragment(pxbuf, corner_x, corner_y, font_size_x, font_size_y);
 }
 
 
@@ -208,6 +215,3 @@ void nt_disp_write_text(const char* str, size_t len, int loc_x, int loc_y) {
 		}
 	}
 }
-
-
-void nt_disp__set_text_inversion(bool x) { use_text_inversion = x; }
