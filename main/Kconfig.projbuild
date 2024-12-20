@@ -1,0 +1,91 @@
+menu "Protogen PawOS Config"
+
+    orsource "hardware/Kconfig.pos"
+
+    config HW_GPIO_STATUSLED
+        int "Hardware Status LED GPIO#"
+        default -1
+        range -1 64
+        help
+            Hardware GPIO number for the status LED.
+
+    menu "Display"
+        config DISP_SPI_FREQ
+            int "Display device frequency (kHz)"
+            default 40000
+            help
+                What frequency should the SPI bus to the display use? The ST7789 is known to be good up to several
+                dozen MHz; this value can be adjusted. Higher values are recommended for faster refresh times:
+                writing a full framebuffer (320x240x24bpp = 1843200 bits) can take several dozen milliseconds,
+                unless very high bus speeds are used. Speeds above 26MHz will require the SPI bus to be located on
+                dedicated IOMUX pins, which boards produced by Ntos should be.
+
+        config DISP_SIZE_X
+            int "Display width"
+            default 240
+            help
+                Note: do NOT factor in screen rotation, this is done in software.
+
+        config DISP_SIZE_Y
+            int "Display height"
+            default 320
+            help
+                Note: do NOT factor in screen rotation, this is done in software.
+
+        config DISP_PIN_SCK
+            int "Display SCK pin"
+            default -1
+
+        config DISP_PIN_MISO
+            int "Display MISO pin"
+            default -1
+
+        config DISP_PIN_MOSI
+            int "Display MOSI pin"
+            default -1
+
+        config DISP_PIN_CS
+            int "Display CS pin"
+            default -1
+
+        config DISP_PIN_RST
+            int "Display Reset pin"
+            default -1
+
+        config DISP_PIN_DC
+            int "Display Dat/Cmd pin"
+            default -1
+
+        config DISP_PIN_BKLT
+            int "Display Backlight pin (-1 if N/A)"
+            default -1
+
+        config DISP_PIN_SD_CS
+            int "Attached SD card CS pin (-1 if N/A)"
+            default -1
+            help
+                If your display has an attached SD card (such as many Adafruit models),
+                set the GPIO pin of the SD card's CS pin here, or -1 if not applicable.
+    endmenu
+
+    menu "Configuration Test"
+        config POS_TEST_BOOL
+            bool "Test Boolean"
+            help
+                Help string for a test boolean that does nothing
+
+        config POS_TEST_INT
+            int "Test Integer"
+            default 420
+            range 69 621
+            help
+                Help string for a test integer with range 69 to 621
+
+        config POS_TEST_STRING
+            string "Test String"
+            default "@ntoskrnl4"
+            help
+                Help string for a test string with default value of ntos
+    endmenu
+
+endmenu
