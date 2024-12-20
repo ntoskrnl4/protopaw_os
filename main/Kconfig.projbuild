@@ -65,7 +65,7 @@ menu "Protogen PawOS Config"
             default -1
             help
                 If your display has an attached SD card (such as many Adafruit models),
-                set the GPIO pin of the SD card's CS pin here, or -1 if not applicable.
+                set the GPIO pin of the SD card's CS pin here, or -1 to disable SD card support.
     endmenu
 
     menu "Configuration Test"

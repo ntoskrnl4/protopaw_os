@@ -6,7 +6,7 @@
 
 #include <esp_err.h>
 
-extern bool NT_FEAT_SDCARD;
+extern bool nt_sdcard_enabled;
 
 void nt_sdcard_init();
 
