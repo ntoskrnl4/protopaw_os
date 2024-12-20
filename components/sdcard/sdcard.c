@@ -7,7 +7,6 @@
 #include "sdcard.h"
 #include "driver/sdspi_host.h"
 #include "esp_vfs_fat.h"
-#include <vfs_fat_sdmmc
 
 sdspi_dev_handle_t dev;
 sdmmc_host_t host;
