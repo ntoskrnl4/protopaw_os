@@ -148,6 +148,7 @@ void nt_init_post() {
 	ESP_ERROR_CHECK(
 			spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO)
 	);
+
 	init_detect_features();
 
 	gpio_set_level(CONFIG_HW_GPIO_STATUSLED, 0);

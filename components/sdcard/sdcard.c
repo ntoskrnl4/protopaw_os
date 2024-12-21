@@ -12,8 +12,10 @@ sdspi_dev_handle_t dev;
 sdmmc_host_t host;
 sdmmc_card_t card;
 
+bool nt_sdcard_enabled = false;
+
+
 void nt_sdcard_init() {
-	nt_sdcard_enabled = false;
 #if CONFIG_DISP_PIN_SD_CS == -1
 	ESP_LOGI("sdcard", "SD card explicitly force-disabled in build configuration");
 	return;
@@ -54,13 +56,13 @@ void nt_sdcard_init() {
 		nt_sdcard_enabled = true;
 	}
 
-	ESP_LOGI("sdcard", "SD card? %b", nt_sdcard_enabled);
+	ESP_LOGI("sdcard", "SD card? %d", nt_sdcard_enabled);
 
 	if (nt_sdcard_enabled) {
 		uint64_t free, total;
 		ESP_ERROR_CHECK(esp_vfs_fat_info("/sdcard", &total, &free));
-		ESP_LOGI("sdcard", "    [size] %llu\n", total);
-		ESP_LOGI("sdcard", "    [free] %llu\n", free);
+		ESP_LOGI("sdcard", "    [size] %llu", total);
+		ESP_LOGI("sdcard", "    [free] %llu", free);
 	}
 
 }

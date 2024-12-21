@@ -4,3 +4,4 @@ sdkconfig
 /sdkconfig.old
 .idea/
 /managed_components/
+/components/font/*
